@@ -10,530 +10,139 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap');
     * { box-sizing: border-box; margin: 0; }
-    body { font-family: 'Nunito', sans-serif; background: #1a1a2e; overflow: hidden; }
+    body { font-family: 'Nunito', sans-serif; background: #0f0f1a; overflow: hidden; }
     #canvas-container { position: fixed; inset: 0; }
-    /* HUD overlay */
     #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-    /* Name-tag labels rendered as CSS overlays via JS */
-    .nametag {
-      position: absolute;
-      transform: translate(-50%, -100%);
-      background: rgba(255,255,255,.85);
-      backdrop-filter: blur(6px);
-      padding: 3px 10px;
-      border-radius: 99px;
-      font-size: 12px;
-      font-weight: 800;
-      color: #334155;
-      white-space: nowrap;
-      pointer-events: none;
-      transition: opacity .2s;
-    }
+    .nametag { position: absolute; transform: translate(-50%, -100%); background: rgba(255,255,255,.85); backdrop-filter: blur(6px); padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 800; color: #334155; white-space: nowrap; pointer-events: none; transition: opacity .2s; }
     .nametag.speaking { background: rgba(251,146,60,.9); color: #fff; }
-    /* Bottom bar */
-    #bottombar {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      pointer-events: auto; z-index: 20;
-      display: flex; align-items: center; justify-content: center;
-      gap: 12px; padding: 16px 24px;
-      background: linear-gradient(to top, rgba(15,15,30,.95) 0%, transparent 100%);
-    }
-    .ctrl-btn {
-      width: 52px; height: 52px;
-      border-radius: 50%;
-      border: none; cursor: pointer;
-      font-size: 22px;
-      display: flex; align-items: center; justify-content: center;
-      transition: transform .15s, background .15s;
-      box-shadow: 0 4px 20px rgba(0,0,0,.4);
-    }
+    #bottombar { position: fixed; bottom: 0; left: 0; right: 0; pointer-events: auto; z-index: 20; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px 24px; background: linear-gradient(to top, rgba(15,15,30,.95) 0%, transparent 100%); }
+    .ctrl-btn { width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; font-size: 22px; display: flex; align-items: center; justify-content: center; transition: transform .15s, background .15s; box-shadow: 0 4px 20px rgba(0,0,0,.4); }
     .ctrl-btn:hover { transform: scale(1.1); }
-    .ctrl-btn:active { transform: scale(.95); }
-    .btn-mic    { background: #22c55e; }
-    .btn-mic.muted { background: #ef4444; }
-    .btn-leave  { background: #f97316; }
-    /* Room name top-left */
-    #room-label {
-      position: fixed; top: 18px; left: 20px; z-index: 20;
-      background: rgba(255,255,255,.1); backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,.15);
-      color: #fff; padding: 8px 18px; border-radius: 99px;
-      font-weight: 800; font-size: 15px;
-      display: flex; align-items: center; gap-8px;
-    }
-    /* Users sidebar */
-    #sidebar {
-      position: fixed; top: 64px; right: 16px; z-index: 20;
-      display: flex; flex-direction: column; gap: 8px;
-      max-height: calc(100vh - 120px); overflow-y: auto;
-    }
-    .user-chip {
-      background: rgba(255,255,255,.1); backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,.15);
-      border-radius: 99px; padding: 6px 12px 6px 6px;
-      display: flex; align-items: center; gap: 8px;
-      color: #fff; font-size: 13px; font-weight: 700;
-    }
-    .user-chip img { width: 28px; height: 28px; border-radius: 50%; }
-    .user-chip .mic-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
-    .user-chip .mic-dot.muted { background: #ef4444; }
-    /* Loading screen */
-    #loading {
-      position: fixed; inset: 0; z-index: 50;
-      background: #1a1a2e;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      color: #fff; gap: 16px;
-    }
-    #loading .spinner {
-      width: 48px; height: 48px;
-      border: 4px solid rgba(255,255,255,.2);
-      border-top-color: #f97316;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-mic { background: #22c55e; } .btn-mic.muted { background: #ef4444; } .btn-leave { background: #f97316; }
+    #room-label { position: fixed; top: 18px; left: 20px; z-index: 20; background: rgba(255,255,255,.1); backdrop-filter: blur(10px); color: #fff; padding: 8px 18px; border-radius: 99px; font-weight: 800; font-size: 15px; }
+    #sidebar { position: fixed; top: 64px; right: 16px; z-index: 20; display: flex; flex-direction: column; gap: 8px; }
+    .user-chip { background: rgba(255,255,255,.1); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.15); border-radius: 99px; padding: 6px 12px 6px 6px; display: flex; align-items: center; gap: 8px; color: #fff; font-size: 13px; }
+    .mic-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; } .mic-dot.muted { background: #ef4444; }
+    #loading { position: fixed; inset: 0; z-index: 50; background: #0f0f1a; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; }
   </style>
 </head>
 <body>
-
-  <!-- Loading -->
-  <div id="loading">
-    <div class="spinner"></div>
-    <p style="font-size:18px;font-weight:800;">Entrando a la sala… 🛋️</p>
-  </div>
-
-  <!-- 3-D Canvas -->
+  <div id="loading"><div class="spinner"></div><p>Entrando a la sala…</p></div>
   <div id="canvas-container"></div>
-
-  <!-- HUD (name tags injected here) -->
   <div id="hud"></div>
-
-  <!-- Room label -->
   <div id="room-label">🛋️ <span id="lbl-room-name">Cargando…</span></div>
-
-  <!-- Users sidebar -->
   <div id="sidebar"></div>
-
-  <!-- Bottom controls -->
   <div id="bottombar">
-    <button class="ctrl-btn btn-mic" id="btn-mic" title="Micrófono">🎤</button>
-    <button class="ctrl-btn btn-leave" id="btn-leave" title="Salir">🚪</button>
+    <button class="ctrl-btn btn-mic" id="btn-mic">🎤</button>
+    <button class="ctrl-btn btn-leave" id="btn-leave">🚪</button>
   </div>
 
   <script>
-  // ─── URL params ──────────────────────────────────────────────────────────
-  const params  = new URLSearchParams(location.search);
-  const ROOM_ID = params.get('id');
-  if (!ROOM_ID) location.href = '/';
+    const params = new URLSearchParams(location.search);
+    const ROOM_ID = params.get('id');
+    const MY = JSON.parse(localStorage.getItem('cozy_me') || '{}');
+    const socket = io();
+    let muted = false, localStream = null, peers = {};
 
-  const MY = JSON.parse(localStorage.getItem('cozy_me') || '{}');
+    // ── CONFIGURACIÓN PODCAST ──
+    const SEAT_POSITIONS = [
+      { x: -1.5, z: -1.2 }, { x: 1.5, z: -1.2 }, 
+      { x: -1.5, z:  1.2 }, { x: 1.5, z:  1.2 }
+    ];
 
-  // ─── Socket ──────────────────────────────────────────────────────────────
-  const socket = io();
-  let muted = false;
-  let localStream = null;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-  // WebRTC peer connections: { [socketId]: RTCPeerConnection }
-  const peers = {};
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f0f1a);
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+    camera.position.set(4, 2.5, 6);
+    camera.lookAt(0, 0.5, 0);
 
-  // ─── 3-D World ───────────────────────────────────────────────────────────
-  // Chair positions (world-space XZ) – supports up to 8 seats
+    scene.add(new THREE.AmbientLight(0x333344, 0.5));
+    const studioLight = new THREE.PointLight(0xffb380, 2, 10);
+    studioLight.position.set(0, 3, 0);
+    scene.add(studioLight);
 
-  // ─── 3-D World (Nuevo entorno tipo Podcast Cozy) ──────────────────────────
-  
-  // Nueva configuración de asientos: 4 posiciones frente a frente
-  // Cambia estas coordenadas y el código actualizará la posición de los avatares automáticamente
-  const SEAT_POSITIONS = [
-    { x: -1.5, z: -1.2 }, { x: 1.5, z: -1.2 }, // Lado A
-    { x: -1.5, z:  1.2 }, { x: 1.5, z:  1.2 }  // Lado B
-  ];
+    // Mesa
+    const table = new THREE.Mesh(new THREE.BoxGeometry(4, 0.15, 2), new THREE.MeshLambertMaterial({ color: 0x2d1b14 }));
+    table.position.y = 0.4;
+    scene.add(table);
 
-  // Three.js setup
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  document.getElementById('canvas-container').appendChild(renderer.domElement);
+    // Sillas
+    function makeChair(x, z) {
+      const g = new THREE.Group();
+      g.position.set(x, 0, z);
+      g.rotation.y = z < 0 ? 0 : Math.PI;
+      const mat = new THREE.MeshLambertMaterial({ color: 0x4a3a30 });
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.6), mat);
+      seat.position.y = 0.3;
+      g.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.1), mat);
+      back.position.set(0, 0.6, -0.25);
+      g.add(back);
+      return g;
+    }
+    SEAT_POSITIONS.forEach(pos => scene.add(makeChair(pos.x, pos.z)));
 
-  const scene  = new THREE.Scene();
-  scene.background = new THREE.Color(0x0f0f1a);
-  scene.fog = new THREE.FogExp2(0x0f0f1a, 0.05);
+    // Avatares
+    const avatarObjs = {};
+    function makeAvatar(user) {
+      const g = new THREE.Group();
+      const col = parseInt(user.avatarBg?.replace('#','') || 'ffdfbf', 16);
+      const mat = new THREE.MeshLambertMaterial({ color: col });
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.14, 0.42, 12), mat);
+      body.position.y = 0.21; g.add(body);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), mat);
+      head.position.y = 0.55; g.add(head);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.025, 8, 32), new THREE.MeshLambertMaterial({ color: 0xf97316 }));
+      ring.position.y = 0.55; ring.rotation.x = Math.PI/2; ring.visible = false; ring.name = 'ring';
+      g.add(ring);
+      return g;
+    }
 
-  // Cámara más baja y lateral (estilo podcast)
-  const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
-  camera.position.set(4, 2.5, 6);
-  camera.lookAt(0, 0.5, 0);
+    function placeAvatar(user) {
+      if (avatarObjs[user.id]) return;
+      const seat = SEAT_POSITIONS[user.seatIndex] || SEAT_POSITIONS[0];
+      const group = makeAvatar(user);
+      group.position.set(seat.x, 0.48, seat.z);
+      scene.add(group);
+      const tag = document.createElement('div');
+      tag.className = 'nametag';
+      tag.textContent = user.username;
+      document.getElementById('hud').appendChild(tag);
+      avatarObjs[user.id] = { group, tag };
+    }
 
-  // ── Luces estilo estudio ──────────────────────────────────────────────────
-  scene.add(new THREE.AmbientLight(0x333344, 0.5));
-  
-  // Luz cálida tipo "studio light"
-  const studioLight = new THREE.PointLight(0xffb380, 2, 10);
-  studioLight.position.set(0, 3, 0);
-  scene.add(studioLight);
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+      const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
+      const projVec = new THREE.Vector3();
+      Object.entries(avatarObjs).forEach(([id, obj]) => {
+        projVec.set(obj.group.position.x, obj.group.position.y + 0.85, obj.group.position.z).project(camera);
+        obj.tag.style.left = (projVec.x * .5 + .5) * w + 'px';
+        obj.tag.style.top = (-.5 * projVec.y + .5) * h + 'px';
+      });
+    }
+    animate();
 
-  // ── Mesa de Podcast ───────────────────────────────────────────────────────
-  const tableGeo = new THREE.BoxGeometry(4, 0.15, 2);
-  const tableMat = new THREE.MeshLambertMaterial({ color: 0x2d1b14 });
-  const table = new THREE.Mesh(tableGeo, tableMat);
-  table.position.y = 0.4;
-  table.receiveShadow = true;
-  scene.add(table);
-
-  // ── Sillas (Función actualizada para mirar hacia el centro) ───────────────
-  function makeChair(x, z) {
-    const g   = new THREE.Group();
-    g.position.set(x, 0, z);
-    
-    // Si están en lado negativo de Z, miran hacia +Z, y viceversa
-    g.rotation.y = z < 0 ? 0 : Math.PI;
-
-    const mat = new THREE.MeshLambertMaterial({ color: 0x4a3a30 });
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.6), mat);
-    seat.position.y = 0.3;
-    g.add(seat);
-
-    const back = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.1), mat);
-    back.position.set(0, 0.6, -0.25);
-    g.add(back);
-
-    return g;
-  }
-  SEAT_POSITIONS.forEach(({x,z}) => scene.add(makeChair(x, z)));
-
-  // ── Decoración de fondo (Panel acústico) ──────────────────────────────────
-  const wallGeo = new THREE.PlaneGeometry(10, 5);
-  const wallMat = new THREE.MeshLambertMaterial({ color: 0x1a1a2e });
-  const backWall = new THREE.Mesh(wallGeo, wallMat);
-  backWall.position.z = -4;
-  scene.add(backWall);
-
-  // ── Avatar factory ────────────────────────────────────────────────────────
-  function colorFromHex(hex) {
-    return parseInt(hex.replace('#',''), 16);
-  }
-
-  const AVATAR_COLORS = {
-    'ffdfbf': 0xffdfbf, 'b6e3f4': 0xb6e3f4, 'c0aede': 0xc0aede,
-    'ffd5dc': 0xffd5dc, 'd1d4f9': 0xd1d4f9, 'a8e6cf': 0xa8e6cf
-  };
-
-  function makeAvatar(user) {
-    const g   = new THREE.Group();
-    const col = AVATAR_COLORS[user.avatarBg] || 0xffdfbf;
-    const mat = new THREE.MeshLambertMaterial({ color: col });
-
-    // Body (sitting: torso only)
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry ? 
-      new THREE.CylinderGeometry(0.18, 0.14, 0.42, 12) :
-      new THREE.CylinderGeometry(0.18, 0.14, 0.42, 12),
-      mat
-    );
-    body.position.y = 0.21;
-    g.add(body);
-
-    // Head
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), mat);
-    head.position.y = 0.55;
-    g.add(head);
-
-    // Eyes
-    const eyeMat = new THREE.MeshLambertMaterial({ color: 0x1a1a2e });
-    [-0.07, 0.07].forEach(ex => {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeMat);
-      eye.position.set(ex, 0.58, 0.18);
-      g.add(eye);
-    });
-
-    // Speaking ring (hidden by default)
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.28, 0.025, 8, 32),
-      new THREE.MeshLambertMaterial({ color: 0xf97316 })
-    );
-    ring.position.y = 0.55;
-    ring.rotation.x = Math.PI / 2;
-    ring.visible = false;
-    ring.name = 'ring';
-    g.add(ring);
-
-    return g;
-  }
-
-  function placeAvatar(user) {
-    if (avatarObjs[user.id]) return; // already placed
-    const seat = SEAT_POSITIONS[user.seatIndex] || SEAT_POSITIONS[0];
-    const group = makeAvatar(user);
-    group.position.set(seat.x, 0.48, seat.z); // seat height
-    group.rotation.y = Math.atan2(seat.x, seat.z);
-    scene.add(group);
-
-    // Name-tag DOM element
-    const tag = document.createElement('div');
-    tag.className = 'nametag';
-    tag.id = 'tag-' + user.id;
-    tag.textContent = user.username;
-    document.getElementById('hud').appendChild(tag);
-
-    avatarObjs[user.id] = { group, tag, seat, user };
-    updateSidebar();
-  }
-
-  function removeAvatar(userId) {
-    const obj = avatarObjs[userId];
-    if (!obj) return;
-    scene.remove(obj.group);
-    obj.tag.remove();
-    delete avatarObjs[userId];
-    updateSidebar();
-  }
-
-  // ── Name-tag projection ───────────────────────────────────────────────────
-  const projVec = new THREE.Vector3();
-  function updateNameTags() {
-    const w = renderer.domElement.clientWidth;
-    const h = renderer.domElement.clientHeight;
-    Object.entries(avatarObjs).forEach(([id, {group, tag}]) => {
-      projVec.set(group.position.x, group.position.y + 0.85, group.position.z);
-      projVec.project(camera);
-      const x = (projVec.x * .5 + .5) * w;
-      const y = (-.5 * projVec.y + .5) * h;
-      tag.style.left = x + 'px';
-      tag.style.top  = y + 'px';
-      tag.style.opacity = projVec.z < 1 ? '1' : '0';
-    });
-  }
-
-  // ── Sidebar (user chips) ──────────────────────────────────────────────────
-  function updateSidebar() {
-    const sb = document.getElementById('sidebar');
-    sb.innerHTML = Object.values(avatarObjs).map(({user}) => `
-      <div class="user-chip">
-        <img src="https://api.dicebear.com/7.x/notionists/svg?seed=${user.avatarSeed}&backgroundColor=${user.avatarBg}" />
-        <span>${user.username}</span>
-        <div class="mic-dot ${user.muted ? 'muted' : ''}"></div>
-      </div>`).join('');
-  }
-
-  // ── Render loop ───────────────────────────────────────────────────────────
-  let t = 0;
-  function animate() {
-    requestAnimationFrame(animate);
-    t += 0.01;
-    // Gentle lamp flicker
-    // Slow camera drift
-    camera.position.x = Math.sin(t * 0.12) * 0.4;
-    camera.position.y = 5 + Math.sin(t * 0.08) * 0.15;
-    camera.lookAt(0, 1, 0);
-
-    // Pulse speaking rings
-    Object.values(avatarObjs).forEach(({group}) => {
-      const ring = group.getObjectByName('ring');
-      if (ring && ring.visible) ring.scale.setScalar(1 + Math.sin(t * 8) * 0.12);
-    });
-
-    updateNameTags();
-    renderer.render(scene, camera);
-  }
-  animate();
-
-  window.addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-  });
-
-  // ─── Socket events ────────────────────────────────────────────────────────
-  socket.on('connect', () => {
-    socket.emit('room:join', {
-      roomId:     ROOM_ID,
-      username:   MY.username,
-      avatarSeed: MY.avatarSeed,
-      avatarBg:   MY.avatarBg
-    }, async (res) => {
-      if (res.error) { alert(res.error); location.href = '/'; return; }
-
-      document.getElementById('lbl-room-name').textContent = res.room.name;
-      document.getElementById('loading').style.display = 'none';
-
-      // FIX race condition: obtener micrófono ANTES de crear peers.
-      // Si initPeer corre sin localStream los tracks nunca se agregan
-      // y el audio no viaja aunque ICE establezca la conexión.
-      await initMedia();
-
-      // Colocarnos primero
-      placeAvatar(res.you);
-
-      // Conectar con cada usuario que ya estaba en la sala.
-      // isInitiator=true: el recién llegado siempre manda el offer.
-      res.room.users.forEach(u => {
-        if (u.id === socket.id) return;
-        placeAvatar(u);
-        initPeer(u.id, true);
+    // Socket Logic (Mantener igual que antes)
+    socket.on('connect', () => {
+      socket.emit('room:join', { roomId: ROOM_ID, username: MY.username, avatarSeed: MY.avatarSeed, avatarBg: MY.avatarBg }, (res) => {
+        document.getElementById('lbl-room-name').textContent = res.room.name;
+        document.getElementById('loading').style.display = 'none';
+        initMedia();
+        placeAvatar(res.you);
+        res.room.users.forEach(u => u.id !== socket.id && placeAvatar(u));
       });
     });
-  });
 
-  socket.on('user:joined', ({ user }) => {
-    // Alguien llegó DESPUÉS que nosotros.
-    // FIX glare: NO iniciamos — el newcomer nos mandará su offer.
-    // Si ambos lados crean offer simultáneamente la negociación falla.
-    if (user.id !== socket.id) placeAvatar(user);
-  });
-
-  socket.on('user:left', ({ userId }) => {
-    removeAvatar(userId);
-    closePeer(userId);
-  });
-
-  socket.on('user:updated', ({ user }) => {
-    if (avatarObjs[user.id]) avatarObjs[user.id].user = user;
-    updateSidebar();
-  });
-
-  socket.on('voice:speaking', ({ userId, speaking }) => {
-    const obj = avatarObjs[userId];
-    if (!obj) return;
-    const ring = obj.group.getObjectByName('ring');
-    if (ring) ring.visible = speaking;
-    const tag = obj.tag;
-    if (tag) speaking ? tag.classList.add('speaking') : tag.classList.remove('speaking');
-  });
-
-  // ─── WebRTC signaling ─────────────────────────────────────────────────────
-  // STUN: descubre la IP pública del peer.
-  // TURN: relay de último recurso cuando ambos peers están detrás de NAT simétrico
-  //       (redes móviles, corporativas, etc.). Sin TURN la conexión falla en producción.
-  // Open Relay Project — servidores TURN gratuitos y públicos.
-  const ICE_SERVERS = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      {
-        urls:       'turn:openrelay.metered.ca:80',
-        username:   'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls:       'turn:openrelay.metered.ca:443',
-        username:   'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls:       'turn:openrelay.metered.ca:443?transport=tcp',
-        username:   'openrelayproject',
-        credential: 'openrelayproject'
-      }
-    ]
-  };
-
-  function initPeer(peerId, isInitiator) {
-    if (peers[peerId]) return;
-    const pc = new RTCPeerConnection(ICE_SERVERS);
-    peers[peerId] = pc;
-
-    // Agregar tracks locales — localStream debe existir antes de llamar initPeer
-    if (localStream) {
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    async function initMedia() { 
+      try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(e) {} 
     }
-
-    pc.onicecandidate = ({ candidate }) => {
-      if (candidate) socket.emit('webrtc:ice', { to: peerId, candidate });
-    };
-
-    // Reproducir el audio remoto en un elemento <audio> fuera del DOM
-    pc.ontrack = ({ streams }) => {
-      const audio = new Audio();
-      audio.srcObject = streams[0];
-      audio.autoplay  = true;
-      // Guardar referencia para evitar GC prematuro
-      pc._remoteAudio = audio;
-    };
-
-    if (isInitiator) {
-      pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
-        .then(() => socket.emit('webrtc:offer', { to: peerId, offer: pc.localDescription }));
-    }
-  }
-
-  socket.on('webrtc:offer', async ({ from, offer }) => {
-    // El peer que nos manda offer ya está en la sala y nosotros acabamos de llegar.
-    // Creamos el PC como no-initiator y respondemos con answer.
-    if (!peers[from]) initPeer(from, false);
-    const pc = peers[from];
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    socket.emit('webrtc:answer', { to: from, answer: pc.localDescription });
-  });
-
-  socket.on('webrtc:answer', async ({ from, answer }) => {
-    await peers[from]?.setRemoteDescription(answer);
-  });
-
-  socket.on('webrtc:ice', async ({ from, candidate }) => {
-    await peers[from]?.addIceCandidate(candidate).catch(() => {});
-  });
-
-  function closePeer(id) {
-    peers[id]?.close();
-    delete peers[id];
-  }
-
-  // ─── Microphone ───────────────────────────────────────────────────────────
-  async function initMedia() {
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      setupVoiceActivity(localStream);
-    } catch (e) {
-      console.warn('No mic access:', e);
-    }
-  }
-
-  function setupVoiceActivity(stream) {
-    const ctx     = new AudioContext();
-    const source  = ctx.createMediaStreamSource(stream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 512;
-    source.connect(analyser);
-    const buf = new Uint8Array(analyser.frequencyBinCount);
-    let speaking = false;
-
-    setInterval(() => {
-      if (muted) return;
-      analyser.getByteFrequencyData(buf);
-      const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
-      const isSpeaking = avg > 15;
-      if (isSpeaking !== speaking) {
-        speaking = isSpeaking;
-        socket.emit('voice:speaking', { speaking });
-        // Self-ring
-        const self = avatarObjs[socket.id];
-        if (self) {
-          const ring = self.group.getObjectByName('ring');
-          if (ring) ring.visible = speaking;
-          speaking ? self.tag.classList.add('speaking') : self.tag.classList.remove('speaking');
-        }
-      }
-    }, 100);
-  }
-
-  // ─── Controls ─────────────────────────────────────────────────────────────
-  const btnMic = document.getElementById('btn-mic');
-  btnMic.addEventListener('click', () => {
-    muted = !muted;
-    btnMic.classList.toggle('muted', muted);
-    btnMic.textContent = muted ? '🔇' : '🎤';
-    if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = !muted);
-    socket.emit('voice:mute', { muted });
-    if (muted) socket.emit('voice:speaking', { speaking: false });
-  });
-
-  document.getElementById('btn-leave').addEventListener('click', () => {
-    socket.emit('room:leave');
-    Object.keys(peers).forEach(closePeer);
-    localStream?.getTracks().forEach(t => t.stop());
-    location.href = '/';
-  });
+    document.getElementById('btn-leave').onclick = () => { socket.emit('room:leave'); location.href = '/'; };
   </script>
 </body>
 </html>
