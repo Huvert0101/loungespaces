@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lounge Spaces – Sala</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap');
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: 'Nunito', sans-serif; background: #1a1a2e; overflow: hidden; }
+    #canvas-container { position: fixed; inset: 0; }
+    /* HUD overlay */
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+    /* Name-tag labels rendered as CSS overlays via JS */
+    .nametag {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      background: rgba(255,255,255,.85);
+      backdrop-filter: blur(6px);
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #334155;
+      white-space: nowrap;
+      pointer-events: none;
+      transition: opacity .2s;
+    }
+    .nametag.speaking { background: rgba(251,146,60,.9); color: #fff; }
+    /* Bottom bar */
+    #bottombar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      pointer-events: auto; z-index: 20;
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px; padding: 16px 24px;
+      background: linear-gradient(to top, rgba(15,15,30,.95) 0%, transparent 100%);
+    }
+    .ctrl-btn {
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      border: none; cursor: pointer;
+      font-size: 22px;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform .15s, background .15s;
+      box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    }
+    .ctrl-btn:hover { transform: scale(1.1); }
+    .ctrl-btn:active { transform: scale(.95); }
+    .btn-mic    { background: #22c55e; }
+    .btn-mic.muted { background: #ef4444; }
+    .btn-leave  { background: #f97316; }
+    /* Room name top-left */
+    #room-label {
+      position: fixed; top: 18px; left: 20px; z-index: 20;
+      background: rgba(255,255,255,.1); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,.15);
+      color: #fff; padding: 8px 18px; border-radius: 99px;
+      font-weight: 800; font-size: 15px;
+      display: flex; align-items: center; gap-8px;
+    }
+    /* Users sidebar */
+    #sidebar {
+      position: fixed; top: 64px; right: 16px; z-index: 20;
+      display: flex; flex-direction: column; gap: 8px;
+      max-height: calc(100vh - 120px); overflow-y: auto;
+    }
+    .user-chip {
+      background: rgba(255,255,255,.1); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 99px; padding: 6px 12px 6px 6px;
+      display: flex; align-items: center; gap: 8px;
+      color: #fff; font-size: 13px; font-weight: 700;
+    }
+    .user-chip img { width: 28px; height: 28px; border-radius: 50%; }
+    .user-chip .mic-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+    .user-chip .mic-dot.muted { background: #ef4444; }
+    /* Loading screen */
+    #loading {
+      position: fixed; inset: 0; z-index: 50;
+      background: #1a1a2e;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #fff; gap: 16px;
+    }
+    #loading .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid rgba(255,255,255,.2);
+      border-top-color: #f97316;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p style="font-size:18px;font-weight:800;">Entrando a la sala… 🛋️</p>
+  </div>
+
+  <!-- 3-D Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- HUD (name tags injected here) -->
+  <div id="hud"></div>
+
+  <!-- Room label -->
+  <div id="room-label">🛋️ <span id="lbl-room-name">Cargando…</span></div>
+
+  <!-- Users sidebar -->
+  <div id="sidebar"></div>
+
+  <!-- Bottom controls -->
+  <div id="bottombar">
+    <button class="ctrl-btn btn-mic" id="btn-mic" title="Micrófono">🎤</button>
+    <button class="ctrl-btn btn-leave" id="btn-leave" title="Salir">🚪</button>
+  </div>
+
+  <script>
+  // ─── URL params ──────────────────────────────────────────────────────────
+  const params  = new URLSearchParams(location.search);
+  const ROOM_ID = params.get('id');
+  if (!ROOM_ID) location.href = '/';
+
+  const MY = JSON.parse(localStorage.getItem('cozy_me') || '{}');
+
+  // ─── Socket ──────────────────────────────────────────────────────────────
+  const socket = io();
+  let muted = false;
+  let localStream = null;
+
+  // WebRTC peer connections: { [socketId]: RTCPeerConnection }
+  const peers = {};
+
+  // ─── 3-D World ───────────────────────────────────────────────────────────
+  // Chair positions (world-space XZ) – supports up to 8 seats
+  const SEAT_POSITIONS = [
+    { x: -2.5, z: -1 }, { x:  2.5, z: -1 },
+    { x: -2.5, z:  1 }, { x:  2.5, z:  1 },
+    { x:  0,   z: -2.5 }, { x:  0, z:  2.5 },
+    { x: -1.5, z:  0 }, { x:  1.5, z:  0 }
+  ];
+
+  // Maps socketId → { group:THREE.Group, nameMesh, seat }
+  const avatarObjs = {};
+
+  // Three.js setup
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+  const scene  = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1228);
+  scene.fog = new THREE.FogExp2(0x1a1228, 0.07);
+
+  const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 100);
+  camera.position.set(0, 5, 8);
+  camera.lookAt(0, 1, 0);
+
+  // ── Lights ────────────────────────────────────────────────────────────────
+  scene.add(new THREE.AmbientLight(0xfff5e4, 0.6));
+
+  const keyLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+  keyLight.position.set(5, 8, 5);
+  keyLight.castShadow = true;
+  scene.add(keyLight);
+
+  // Warm lamp glow in the center
+  const lampLight = new THREE.PointLight(0xff9944, 1.5, 12);
+  lampLight.position.set(0, 3, 0);
+  scene.add(lampLight);
+
+  // ── Floor ─────────────────────────────────────────────────────────────────
+  const floorGeo = new THREE.CircleGeometry(7, 64);
+  const floorMat = new THREE.MeshLambertMaterial({ color: 0x3d2b1f });
+  const floor    = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Rug
+  const rugGeo = new THREE.CircleGeometry(3.5, 64);
+  const rugMat = new THREE.MeshLambertMaterial({ color: 0x7c3d52 });
+  const rug    = new THREE.Mesh(rugGeo, rugMat);
+  rug.rotation.x = -Math.PI / 2;
+  rug.position.y = 0.01;
+  scene.add(rug);
+
+  // ── Walls (arc) ──────────────────────────────────────────────────────────
+  function makeWall(color) {
+    const geo = new THREE.CylinderGeometry(7, 7, 5, 32, 1, true, 0, Math.PI * 2);
+    const mat = new THREE.MeshLambertMaterial({ color, side: THREE.BackSide });
+    const m   = new THREE.Mesh(geo, mat);
+    m.position.y = 2.5;
+    return m;
+  }
+  scene.add(makeWall(0x2a1f36));
+
+  // ── Ceiling ───────────────────────────────────────────────────────────────
+  const ceilGeo = new THREE.CircleGeometry(7, 64);
+  const ceilMat = new THREE.MeshLambertMaterial({ color: 0x1f1730 });
+  const ceil    = new THREE.Mesh(ceilGeo, ceilMat);
+  ceil.rotation.x = Math.PI / 2;
+  ceil.position.y = 5;
+  scene.add(ceil);
+
+  // ── Central table ─────────────────────────────────────────────────────────
+  function makeTable() {
+    const g  = new THREE.Group();
+    const top = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.9, 0.9, 0.08, 32),
+      new THREE.MeshLambertMaterial({ color: 0x6b3f2a })
+    );
+    top.position.y = 0.82; top.castShadow = true;
+    g.add(top);
+    const leg = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.1, 0.82, 12),
+      new THREE.MeshLambertMaterial({ color: 0x4a2e1a })
+    );
+    leg.position.y = 0.41; leg.castShadow = true;
+    g.add(leg);
+    // Mug on the table
+    const mug = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.07, 0.15, 12),
+      new THREE.MeshLambertMaterial({ color: 0xf97316 })
+    );
+    mug.position.set(0.4, 0.97, 0.2);
+    g.add(mug);
+    return g;
+  }
+  scene.add(makeTable());
+
+  // ── Lamp ─────────────────────────────────────────────────────────────────
+  function makeLamp() {
+    const g = new THREE.Group();
+    g.position.set(0, 0, 0);
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.03, 2.6, 8),
+      new THREE.MeshLambertMaterial({ color: 0x888 })
+    );
+    pole.position.y = 1.3;
+    g.add(pole);
+    const shade = new THREE.Mesh(
+      new THREE.ConeGeometry(0.4, 0.5, 16, 1, true),
+      new THREE.MeshLambertMaterial({ color: 0xffe8cc, side: THREE.DoubleSide })
+    );
+    shade.position.y = 2.85;
+    g.add(shade);
+    return g;
+  }
+  const lamp = makeLamp();
+  lamp.position.set(2.8, 0, -2.8);
+  scene.add(lamp);
+
+  // ── Bookshelf (decoration) ────────────────────────────────────────────────
+  function makeShelf() {
+    const g = new THREE.Group();
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 2.2, 0.3),
+      new THREE.MeshLambertMaterial({ color: 0x5a3e2b })
+    );
+    frame.position.y = 1.1;
+    g.add(frame);
+    const bookColors = [0xc0392b, 0x2980b9, 0x27ae60, 0x8e44ad, 0xe67e22];
+    for (let i = 0; i < 5; i++) {
+      const book = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.45 + Math.random()*.2, 0.22),
+        new THREE.MeshLambertMaterial({ color: bookColors[i] })
+      );
+      book.position.set(-0.55 + i * 0.28, 0.5, 0.05);
+      g.add(book);
+    }
+    return g;
+  }
+  const shelf = makeShelf();
+  shelf.position.set(-5.5, 0, -3);
+  shelf.rotation.y = Math.PI * .3;
+  scene.add(shelf);
+
+  // ── Stars (background particles) ──────────────────────────────────────────
+  const starGeo = new THREE.BufferGeometry();
+  const starVerts = [];
+  for (let i = 0; i < 800; i++) {
+    const r = 9 + Math.random() * 3;
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = Math.random() * Math.PI;
+    starVerts.push(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
+  }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.04 })));
+
+  // ── Chair factory ─────────────────────────────────────────────────────────
+  function makeChair(x, z) {
+    const g   = new THREE.Group();
+    g.position.set(x, 0, z);
+    // Rotate chair to face center
+    g.rotation.y = Math.atan2(x, z);
+
+    const mat = new THREE.MeshLambertMaterial({ color: 0x8b5e3c });
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.07, 0.55), mat);
+    seat.position.y = 0.48;
+    g.add(seat);
+
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.07), mat);
+    back.position.set(0, 0.73, -0.24);
+    g.add(back);
+
+    [[-.22,0,-.22],[.22,0,-.22],[-.22,0,.22],[.22,0,.22]].forEach(([lx,ly,lz]) => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.48,6), mat);
+      leg.position.set(lx, 0.24, lz);
+      g.add(leg);
+    });
+
+    return g;
+  }
+
+  // Place all chairs
+  SEAT_POSITIONS.forEach(({x,z}) => scene.add(makeChair(x, z)));
+
+  // ── Avatar factory ────────────────────────────────────────────────────────
+  function colorFromHex(hex) {
+    return parseInt(hex.replace('#',''), 16);
+  }
+
+  const AVATAR_COLORS = {
+    'ffdfbf': 0xffdfbf, 'b6e3f4': 0xb6e3f4, 'c0aede': 0xc0aede,
+    'ffd5dc': 0xffd5dc, 'd1d4f9': 0xd1d4f9, 'a8e6cf': 0xa8e6cf
+  };
+
+  function makeAvatar(user) {
+    const g   = new THREE.Group();
+    const col = AVATAR_COLORS[user.avatarBg] || 0xffdfbf;
+    const mat = new THREE.MeshLambertMaterial({ color: col });
+
+    // Body (sitting: torso only)
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry ? 
+      new THREE.CylinderGeometry(0.18, 0.14, 0.42, 12) :
+      new THREE.CylinderGeometry(0.18, 0.14, 0.42, 12),
+      mat
+    );
+    body.position.y = 0.21;
+    g.add(body);
+
+    // Head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), mat);
+    head.position.y = 0.55;
+    g.add(head);
+
+    // Eyes
+    const eyeMat = new THREE.MeshLambertMaterial({ color: 0x1a1a2e });
+    [-0.07, 0.07].forEach(ex => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeMat);
+      eye.position.set(ex, 0.58, 0.18);
+      g.add(eye);
+    });
+
+    // Speaking ring (hidden by default)
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.28, 0.025, 8, 32),
+      new THREE.MeshLambertMaterial({ color: 0xf97316 })
+    );
+    ring.position.y = 0.55;
+    ring.rotation.x = Math.PI / 2;
+    ring.visible = false;
+    ring.name = 'ring';
+    g.add(ring);
+
+    return g;
+  }
+
+  function placeAvatar(user) {
+    if (avatarObjs[user.id]) return; // already placed
+    const seat = SEAT_POSITIONS[user.seatIndex] || SEAT_POSITIONS[0];
+    const group = makeAvatar(user);
+    group.position.set(seat.x, 0.48, seat.z); // seat height
+    group.rotation.y = Math.atan2(seat.x, seat.z);
+    scene.add(group);
+
+    // Name-tag DOM element
+    const tag = document.createElement('div');
+    tag.className = 'nametag';
+    tag.id = 'tag-' + user.id;
+    tag.textContent = user.username;
+    document.getElementById('hud').appendChild(tag);
+
+    avatarObjs[user.id] = { group, tag, seat, user };
+    updateSidebar();
+  }
+
+  function removeAvatar(userId) {
+    const obj = avatarObjs[userId];
+    if (!obj) return;
+    scene.remove(obj.group);
+    obj.tag.remove();
+    delete avatarObjs[userId];
+    updateSidebar();
+  }
+
+  // ── Name-tag projection ───────────────────────────────────────────────────
+  const projVec = new THREE.Vector3();
+  function updateNameTags() {
+    const w = renderer.domElement.clientWidth;
+    const h = renderer.domElement.clientHeight;
+    Object.entries(avatarObjs).forEach(([id, {group, tag}]) => {
+      projVec.set(group.position.x, group.position.y + 0.85, group.position.z);
+      projVec.project(camera);
+      const x = (projVec.x * .5 + .5) * w;
+      const y = (-.5 * projVec.y + .5) * h;
+      tag.style.left = x + 'px';
+      tag.style.top  = y + 'px';
+      tag.style.opacity = projVec.z < 1 ? '1' : '0';
+    });
+  }
+
+  // ── Sidebar (user chips) ──────────────────────────────────────────────────
+  function updateSidebar() {
+    const sb = document.getElementById('sidebar');
+    sb.innerHTML = Object.values(avatarObjs).map(({user}) => `
+      <div class="user-chip">
+        <img src="https://api.dicebear.com/7.x/notionists/svg?seed=${user.avatarSeed}&backgroundColor=${user.avatarBg}" />
+        <span>${user.username}</span>
+        <div class="mic-dot ${user.muted ? 'muted' : ''}"></div>
+      </div>`).join('');
+  }
+
+  // ── Render loop ───────────────────────────────────────────────────────────
+  let t = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    t += 0.01;
+    // Gentle lamp flicker
+    lampLight.intensity = 1.4 + Math.sin(t * 3.1) * 0.15;
+    // Slow camera drift
+    camera.position.x = Math.sin(t * 0.12) * 0.4;
+    camera.position.y = 5 + Math.sin(t * 0.08) * 0.15;
+    camera.lookAt(0, 1, 0);
+
+    // Pulse speaking rings
+    Object.values(avatarObjs).forEach(({group}) => {
+      const ring = group.getObjectByName('ring');
+      if (ring && ring.visible) ring.scale.setScalar(1 + Math.sin(t * 8) * 0.12);
+    });
+
+    updateNameTags();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  // ─── Socket events ────────────────────────────────────────────────────────
+  socket.on('connect', () => {
+    socket.emit('room:join', {
+      roomId:     ROOM_ID,
+      username:   MY.username,
+      avatarSeed: MY.avatarSeed,
+      avatarBg:   MY.avatarBg
+    }, async (res) => {
+      if (res.error) { alert(res.error); location.href = '/'; return; }
+
+      document.getElementById('lbl-room-name').textContent = res.room.name;
+      document.getElementById('loading').style.display = 'none';
+
+      // FIX race condition: obtener micrófono ANTES de crear peers.
+      // Si initPeer corre sin localStream los tracks nunca se agregan
+      // y el audio no viaja aunque ICE establezca la conexión.
+      await initMedia();
+
+      // Colocarnos primero
+      placeAvatar(res.you);
+
+      // Conectar con cada usuario que ya estaba en la sala.
+      // isInitiator=true: el recién llegado siempre manda el offer.
+      res.room.users.forEach(u => {
+        if (u.id === socket.id) return;
+        placeAvatar(u);
+        initPeer(u.id, true);
+      });
+    });
+  });
+
+  socket.on('user:joined', ({ user }) => {
+    // Alguien llegó DESPUÉS que nosotros.
+    // FIX glare: NO iniciamos — el newcomer nos mandará su offer.
+    // Si ambos lados crean offer simultáneamente la negociación falla.
+    if (user.id !== socket.id) placeAvatar(user);
+  });
+
+  socket.on('user:left', ({ userId }) => {
+    removeAvatar(userId);
+    closePeer(userId);
+  });
+
+  socket.on('user:updated', ({ user }) => {
+    if (avatarObjs[user.id]) avatarObjs[user.id].user = user;
+    updateSidebar();
+  });
+
+  socket.on('voice:speaking', ({ userId, speaking }) => {
+    const obj = avatarObjs[userId];
+    if (!obj) return;
+    const ring = obj.group.getObjectByName('ring');
+    if (ring) ring.visible = speaking;
+    const tag = obj.tag;
+    if (tag) speaking ? tag.classList.add('speaking') : tag.classList.remove('speaking');
+  });
+
+  // ─── WebRTC signaling ─────────────────────────────────────────────────────
+  // STUN: descubre la IP pública del peer.
+  // TURN: relay de último recurso cuando ambos peers están detrás de NAT simétrico
+  //       (redes móviles, corporativas, etc.). Sin TURN la conexión falla en producción.
+  // Open Relay Project — servidores TURN gratuitos y públicos.
+  const ICE_SERVERS = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      {
+        urls:       'turn:openrelay.metered.ca:80',
+        username:   'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls:       'turn:openrelay.metered.ca:443',
+        username:   'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls:       'turn:openrelay.metered.ca:443?transport=tcp',
+        username:   'openrelayproject',
+        credential: 'openrelayproject'
+      }
+    ]
+  };
+
+  function initPeer(peerId, isInitiator) {
+    if (peers[peerId]) return;
+    const pc = new RTCPeerConnection(ICE_SERVERS);
+    peers[peerId] = pc;
+
+    // Agregar tracks locales — localStream debe existir antes de llamar initPeer
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) socket.emit('webrtc:ice', { to: peerId, candidate });
+    };
+
+    // Reproducir el audio remoto en un elemento <audio> fuera del DOM
+    pc.ontrack = ({ streams }) => {
+      const audio = new Audio();
+      audio.srcObject = streams[0];
+      audio.autoplay  = true;
+      // Guardar referencia para evitar GC prematuro
+      pc._remoteAudio = audio;
+    };
+
+    if (isInitiator) {
+      pc.createOffer()
+        .then(offer => pc.setLocalDescription(offer))
+        .then(() => socket.emit('webrtc:offer', { to: peerId, offer: pc.localDescription }));
+    }
+  }
+
+  socket.on('webrtc:offer', async ({ from, offer }) => {
+    // El peer que nos manda offer ya está en la sala y nosotros acabamos de llegar.
+    // Creamos el PC como no-initiator y respondemos con answer.
+    if (!peers[from]) initPeer(from, false);
+    const pc = peers[from];
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.emit('webrtc:answer', { to: from, answer: pc.localDescription });
+  });
+
+  socket.on('webrtc:answer', async ({ from, answer }) => {
+    await peers[from]?.setRemoteDescription(answer);
+  });
+
+  socket.on('webrtc:ice', async ({ from, candidate }) => {
+    await peers[from]?.addIceCandidate(candidate).catch(() => {});
+  });
+
+  function closePeer(id) {
+    peers[id]?.close();
+    delete peers[id];
+  }
+
+  // ─── Microphone ───────────────────────────────────────────────────────────
+  async function initMedia() {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      setupVoiceActivity(localStream);
+    } catch (e) {
+      console.warn('No mic access:', e);
+    }
+  }
+
+  function setupVoiceActivity(stream) {
+    const ctx     = new AudioContext();
+    const source  = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    const buf = new Uint8Array(analyser.frequencyBinCount);
+    let speaking = false;
+
+    setInterval(() => {
+      if (muted) return;
+      analyser.getByteFrequencyData(buf);
+      const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
+      const isSpeaking = avg > 15;
+      if (isSpeaking !== speaking) {
+        speaking = isSpeaking;
+        socket.emit('voice:speaking', { speaking });
+        // Self-ring
+        const self = avatarObjs[socket.id];
+        if (self) {
+          const ring = self.group.getObjectByName('ring');
+          if (ring) ring.visible = speaking;
+          speaking ? self.tag.classList.add('speaking') : self.tag.classList.remove('speaking');
+        }
+      }
+    }, 100);
+  }
+
+  // ─── Controls ─────────────────────────────────────────────────────────────
+  const btnMic = document.getElementById('btn-mic');
+  btnMic.addEventListener('click', () => {
+    muted = !muted;
+    btnMic.classList.toggle('muted', muted);
+    btnMic.textContent = muted ? '🔇' : '🎤';
+    if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = !muted);
+    socket.emit('voice:mute', { muted });
+    if (muted) socket.emit('voice:speaking', { speaking: false });
+  });
+
+  document.getElementById('btn-leave').addEventListener('click', () => {
+    socket.emit('room:leave');
+    Object.keys(peers).forEach(closePeer);
+    localStream?.getTracks().forEach(t => t.stop());
+    location.href = '/';
+  });
+  </script>
+</body>
+</html>
