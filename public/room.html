@@ -138,190 +138,74 @@
 
   // ─── 3-D World ───────────────────────────────────────────────────────────
   // Chair positions (world-space XZ) – supports up to 8 seats
-  const SEAT_POSITIONS = [
-    { x: -2.5, z: -1 }, { x:  2.5, z: -1 },
-    { x: -2.5, z:  1 }, { x:  2.5, z:  1 },
-    { x:  0,   z: -2.5 }, { x:  0, z:  2.5 },
-    { x: -1.5, z:  0 }, { x:  1.5, z:  0 }
-  ];
 
-  // Maps socketId → { group:THREE.Group, nameMesh, seat }
-  const avatarObjs = {};
+  // ─── 3-D World (Nuevo entorno tipo Podcast Cozy) ──────────────────────────
+  
+  // Nueva configuración de asientos: 4 posiciones frente a frente
+  // Cambia estas coordenadas y el código actualizará la posición de los avatares automáticamente
+  const SEAT_POSITIONS = [
+    { x: -1.5, z: -1.2 }, { x: 1.5, z: -1.2 }, // Lado A
+    { x: -1.5, z:  1.2 }, { x: 1.5, z:  1.2 }  // Lado B
+  ];
 
   // Three.js setup
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   document.getElementById('canvas-container').appendChild(renderer.domElement);
 
   const scene  = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a1228);
-  scene.fog = new THREE.FogExp2(0x1a1228, 0.07);
+  scene.background = new THREE.Color(0x0f0f1a);
+  scene.fog = new THREE.FogExp2(0x0f0f1a, 0.05);
 
-  const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 100);
-  camera.position.set(0, 5, 8);
-  camera.lookAt(0, 1, 0);
+  // Cámara más baja y lateral (estilo podcast)
+  const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+  camera.position.set(4, 2.5, 6);
+  camera.lookAt(0, 0.5, 0);
 
-  // ── Lights ────────────────────────────────────────────────────────────────
-  scene.add(new THREE.AmbientLight(0xfff5e4, 0.6));
+  // ── Luces estilo estudio ──────────────────────────────────────────────────
+  scene.add(new THREE.AmbientLight(0x333344, 0.5));
+  
+  // Luz cálida tipo "studio light"
+  const studioLight = new THREE.PointLight(0xffb380, 2, 10);
+  studioLight.position.set(0, 3, 0);
+  scene.add(studioLight);
 
-  const keyLight = new THREE.DirectionalLight(0xffeedd, 1.2);
-  keyLight.position.set(5, 8, 5);
-  keyLight.castShadow = true;
-  scene.add(keyLight);
+  // ── Mesa de Podcast ───────────────────────────────────────────────────────
+  const tableGeo = new THREE.BoxGeometry(4, 0.15, 2);
+  const tableMat = new THREE.MeshLambertMaterial({ color: 0x2d1b14 });
+  const table = new THREE.Mesh(tableGeo, tableMat);
+  table.position.y = 0.4;
+  table.receiveShadow = true;
+  scene.add(table);
 
-  // Warm lamp glow in the center
-  const lampLight = new THREE.PointLight(0xff9944, 1.5, 12);
-  lampLight.position.set(0, 3, 0);
-  scene.add(lampLight);
-
-  // ── Floor ─────────────────────────────────────────────────────────────────
-  const floorGeo = new THREE.CircleGeometry(7, 64);
-  const floorMat = new THREE.MeshLambertMaterial({ color: 0x3d2b1f });
-  const floor    = new THREE.Mesh(floorGeo, floorMat);
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  scene.add(floor);
-
-  // Rug
-  const rugGeo = new THREE.CircleGeometry(3.5, 64);
-  const rugMat = new THREE.MeshLambertMaterial({ color: 0x7c3d52 });
-  const rug    = new THREE.Mesh(rugGeo, rugMat);
-  rug.rotation.x = -Math.PI / 2;
-  rug.position.y = 0.01;
-  scene.add(rug);
-
-  // ── Walls (arc) ──────────────────────────────────────────────────────────
-  function makeWall(color) {
-    const geo = new THREE.CylinderGeometry(7, 7, 5, 32, 1, true, 0, Math.PI * 2);
-    const mat = new THREE.MeshLambertMaterial({ color, side: THREE.BackSide });
-    const m   = new THREE.Mesh(geo, mat);
-    m.position.y = 2.5;
-    return m;
-  }
-  scene.add(makeWall(0x2a1f36));
-
-  // ── Ceiling ───────────────────────────────────────────────────────────────
-  const ceilGeo = new THREE.CircleGeometry(7, 64);
-  const ceilMat = new THREE.MeshLambertMaterial({ color: 0x1f1730 });
-  const ceil    = new THREE.Mesh(ceilGeo, ceilMat);
-  ceil.rotation.x = Math.PI / 2;
-  ceil.position.y = 5;
-  scene.add(ceil);
-
-  // ── Central table ─────────────────────────────────────────────────────────
-  function makeTable() {
-    const g  = new THREE.Group();
-    const top = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.9, 0.9, 0.08, 32),
-      new THREE.MeshLambertMaterial({ color: 0x6b3f2a })
-    );
-    top.position.y = 0.82; top.castShadow = true;
-    g.add(top);
-    const leg = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.1, 0.82, 12),
-      new THREE.MeshLambertMaterial({ color: 0x4a2e1a })
-    );
-    leg.position.y = 0.41; leg.castShadow = true;
-    g.add(leg);
-    // Mug on the table
-    const mug = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08, 0.07, 0.15, 12),
-      new THREE.MeshLambertMaterial({ color: 0xf97316 })
-    );
-    mug.position.set(0.4, 0.97, 0.2);
-    g.add(mug);
-    return g;
-  }
-  scene.add(makeTable());
-
-  // ── Lamp ─────────────────────────────────────────────────────────────────
-  function makeLamp() {
-    const g = new THREE.Group();
-    g.position.set(0, 0, 0);
-    const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.03, 0.03, 2.6, 8),
-      new THREE.MeshLambertMaterial({ color: 0x888 })
-    );
-    pole.position.y = 1.3;
-    g.add(pole);
-    const shade = new THREE.Mesh(
-      new THREE.ConeGeometry(0.4, 0.5, 16, 1, true),
-      new THREE.MeshLambertMaterial({ color: 0xffe8cc, side: THREE.DoubleSide })
-    );
-    shade.position.y = 2.85;
-    g.add(shade);
-    return g;
-  }
-  const lamp = makeLamp();
-  lamp.position.set(2.8, 0, -2.8);
-  scene.add(lamp);
-
-  // ── Bookshelf (decoration) ────────────────────────────────────────────────
-  function makeShelf() {
-    const g = new THREE.Group();
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5, 2.2, 0.3),
-      new THREE.MeshLambertMaterial({ color: 0x5a3e2b })
-    );
-    frame.position.y = 1.1;
-    g.add(frame);
-    const bookColors = [0xc0392b, 0x2980b9, 0x27ae60, 0x8e44ad, 0xe67e22];
-    for (let i = 0; i < 5; i++) {
-      const book = new THREE.Mesh(
-        new THREE.BoxGeometry(0.18, 0.45 + Math.random()*.2, 0.22),
-        new THREE.MeshLambertMaterial({ color: bookColors[i] })
-      );
-      book.position.set(-0.55 + i * 0.28, 0.5, 0.05);
-      g.add(book);
-    }
-    return g;
-  }
-  const shelf = makeShelf();
-  shelf.position.set(-5.5, 0, -3);
-  shelf.rotation.y = Math.PI * .3;
-  scene.add(shelf);
-
-  // ── Stars (background particles) ──────────────────────────────────────────
-  const starGeo = new THREE.BufferGeometry();
-  const starVerts = [];
-  for (let i = 0; i < 800; i++) {
-    const r = 9 + Math.random() * 3;
-    const theta = Math.random() * Math.PI * 2;
-    const phi   = Math.random() * Math.PI;
-    starVerts.push(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
-  }
-  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
-  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.04 })));
-
-  // ── Chair factory ─────────────────────────────────────────────────────────
+  // ── Sillas (Función actualizada para mirar hacia el centro) ───────────────
   function makeChair(x, z) {
     const g   = new THREE.Group();
     g.position.set(x, 0, z);
-    // Rotate chair to face center
-    g.rotation.y = Math.atan2(x, z);
+    
+    // Si están en lado negativo de Z, miran hacia +Z, y viceversa
+    g.rotation.y = z < 0 ? 0 : Math.PI;
 
-    const mat = new THREE.MeshLambertMaterial({ color: 0x8b5e3c });
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.07, 0.55), mat);
-    seat.position.y = 0.48;
+    const mat = new THREE.MeshLambertMaterial({ color: 0x4a3a30 });
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.6), mat);
+    seat.position.y = 0.3;
     g.add(seat);
 
-    const back = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.07), mat);
-    back.position.set(0, 0.73, -0.24);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.1), mat);
+    back.position.set(0, 0.6, -0.25);
     g.add(back);
-
-    [[-.22,0,-.22],[.22,0,-.22],[-.22,0,.22],[.22,0,.22]].forEach(([lx,ly,lz]) => {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.48,6), mat);
-      leg.position.set(lx, 0.24, lz);
-      g.add(leg);
-    });
 
     return g;
   }
-
-  // Place all chairs
   SEAT_POSITIONS.forEach(({x,z}) => scene.add(makeChair(x, z)));
+
+  // ── Decoración de fondo (Panel acústico) ──────────────────────────────────
+  const wallGeo = new THREE.PlaneGeometry(10, 5);
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0x1a1a2e });
+  const backWall = new THREE.Mesh(wallGeo, wallMat);
+  backWall.position.z = -4;
+  scene.add(backWall);
 
   // ── Avatar factory ────────────────────────────────────────────────────────
   function colorFromHex(hex) {
